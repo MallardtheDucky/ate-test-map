@@ -34,12 +34,15 @@
   }
   #legend {
     position: absolute;
+    top: 56px;
     bottom: 12px;
     right: 12px;
     z-index: 1000;
     display: none;
-    max-height: 55%;
-    overflow-y: auto;
+    flex-direction: column;
+    width: 280px;
+    max-width: calc(100% - 24px);
+    box-sizing: border-box;
     padding: 8px 10px;
     font: 12px/1.6 sans-serif;
     background: rgba(255, 255, 255, 0.94);
@@ -49,6 +52,37 @@
   #legend .title {
     margin-bottom: 4px;
     font-weight: 700;
+  }
+  #legend input {
+    box-sizing: border-box;
+    width: 100%;
+    margin-bottom: 6px;
+    padding: 4px 6px;
+    font: 12px sans-serif;
+    border: 1px solid #000000;
+    border-radius: 3px;
+  }
+  #legend .rows {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  #legend .row {
+    padding: 0 2px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #legend .row:hover {
+    background: #e6e6e6;
+  }
+  #legend .row.selected {
+    font-weight: 700;
+    background: #ffe98a;
+  }
+  #legend .empty {
+    font-style: italic;
   }
   #legend .swatch {
     display: inline-block;
@@ -70,14 +104,19 @@
 <div id="legend"></div>
 <script src="lib/leaflet.js"></script>
 <script src="data/provinces.js"></script>
+<script src="data/trade_routes.js" onerror="this.remove()"></script>
 <script>
-  const UNSET_COLOR = "#bdbdbd";
-  const UNSET_LABEL = "Unassigned";
+  const UNSET_COLORS = { Sea: "#a9c4d6", Wasteland: "#d8d2c4", Unassigned: "#bdbdbd" };
   const MODES = {
     culture: { title: "Culture", key: "culture" },
     religion: { title: "Religion", key: "religion" },
-    nation: { title: "Nation", key: "nation_title", legendLimit: 40 }
+    nation: { title: "Nation", key: "nation_title", colorKey: "realm_color" }
   };
+  MODES.culture.colorKey = "culture_color";
+  MODES.religion.colorKey = "religion_color";
+  const TRADE = window.TRADE_ROUTES_DATA || null;
+  const TRADE_LAND = "#e9e4d3";
+  let tradeLayer = null;
 
   const map = L.map("map", {
     crs: L.CRS.Simple,
@@ -97,7 +136,10 @@
 
   let provinceLayer = null;
   let currentMode = null;
+  let selected = null;
+  let filterText = "";
   const palettes = {};
+  const officialColors = {};
   const counts = {};
   const nationNames = {};
 
@@ -127,9 +169,26 @@
     return value === null || value === undefined || value === "" ? null : value;
   }
 
+  // Provinces without a value are told apart: sea zones, wasteland, or truly unassigned land.
+  function unsetLabel(feature) {
+    const kind = feature.properties.kind;
+    if (kind === "sea") {
+      return "Sea";
+    }
+    if (kind === "wasteland") {
+      return "Wasteland";
+    }
+    return "Unassigned";
+  }
+
+  function keyOf(feature, mode) {
+    const value = valueOf(feature, mode);
+    return value === null ? unsetLabel(feature) : value;
+  }
+
   function labelOf(mode, value) {
-    if (value === UNSET_LABEL) {
-      return UNSET_LABEL;
+    if (UNSET_COLORS[value] && !palettes[mode][value]) {
+      return value;
     }
     return mode === "nation" ? nationNames[value] || value : value;
   }
@@ -138,18 +197,23 @@
     if (!currentMode) {
       return null;
     }
+    if (currentMode === "trade") {
+      const kind = feature.properties.kind;
+      return kind === "sea" ? UNSET_COLORS.Sea : kind === "wasteland" ? UNSET_COLORS.Wasteland : TRADE_LAND;
+    }
     const value = valueOf(feature, currentMode);
     if (value === null) {
-      return UNSET_COLOR;
+      return UNSET_COLORS[unsetLabel(feature)];
     }
-    return palettes[currentMode][value] || UNSET_COLOR;
+    return palettes[currentMode][value] || UNSET_COLORS.Unassigned;
   }
 
   function styleFor(feature) {
     const fill = colorFor(feature);
+    const picked = selected !== null && keyOf(feature, currentMode) === selected;
     return {
-      color: "#000000",
-      weight: 1,
+      color: picked ? "#ffffff" : "#000000",
+      weight: picked ? 2.5 : 1,
       opacity: 1,
       fill: true,
       fillColor: fill || "#000000",
@@ -159,13 +223,16 @@
 
   function hoverStyleFor(feature) {
     if (colorFor(feature)) {
-      return { weight: 3, fillOpacity: 1 };
+      return { color: "#000000", weight: 3, fillOpacity: 1 };
     }
     return { weight: 3, fillColor: "#000000", fillOpacity: 0.15 };
   }
 
-  function legendRow(color, text) {
+  function legendRow(color, text, value) {
     const row = document.createElement("div");
+    row.className = "row" + (value === selected ? " selected" : "");
+    row.title = text;
+    row.dataset.value = value;
     const swatch = document.createElement("span");
     swatch.className = "swatch";
     swatch.style.background = color;
@@ -174,57 +241,166 @@
     return row;
   }
 
+  function fillRows(rowsEl) {
+    rowsEl.textContent = "";
+    const modeCounts = counts[currentMode];
+    const needle = filterText.trim().toLowerCase();
+    const entries = Object.keys(modeCounts)
+      .filter((value) => !needle || labelOf(currentMode, value).toLowerCase().includes(needle))
+      .sort((a, b) => modeCounts[b] - modeCounts[a] || labelOf(currentMode, a).localeCompare(labelOf(currentMode, b)));
+
+    entries.forEach((value) => {
+      const color = palettes[currentMode][value] || UNSET_COLORS[value] || UNSET_COLORS.Unassigned;
+      rowsEl.appendChild(legendRow(color, labelOf(currentMode, value) + " (" + modeCounts[value] + ")", value));
+    });
+    if (!entries.length) {
+      const none = document.createElement("div");
+      none.className = "empty";
+      none.textContent = "No match";
+      rowsEl.appendChild(none);
+    }
+  }
+
+  function renderTradeLegend() {
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = "Trade Routes (" + new Set(TRADE.features.map((f) => f.properties.name)).size + ")";
+    legendEl.appendChild(title);
+    const rowsEl = document.createElement("div");
+    rowsEl.className = "rows";
+    const seen = new Set();
+    TRADE.features.forEach((feature) => {
+      const name = feature.properties.name;
+      if (seen.has(name)) {
+        return;
+      }
+      seen.add(name);
+      rowsEl.appendChild(legendRow(tradeColor(feature), feature.properties.display_name || name, name));
+    });
+    rowsEl.addEventListener("click", (event) => {
+      const row = event.target.closest(".row");
+      if (!row) {
+        return;
+      }
+      let bounds = null;
+      tradeLayer.eachLayer((layer) => {
+        if (layer.feature.properties.name === row.dataset.value) {
+          bounds = bounds ? bounds.extend(layer.getBounds()) : L.latLngBounds(layer.getBounds().getSouthWest(), layer.getBounds().getNorthEast());
+        }
+      });
+      if (bounds) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 1 });
+      }
+    });
+    legendEl.appendChild(rowsEl);
+    legendEl.style.display = "flex";
+  }
+
+  function tradeColor(feature) {
+    const own = feature.properties.color;
+    if (own && /^#[0-9a-f]{6}$/i.test(own)) {
+      return own;
+    }
+    return "#b3261e";
+  }
+
   function renderLegend() {
     legendEl.textContent = "";
     if (!currentMode) {
       legendEl.style.display = "none";
       return;
     }
+    if (currentMode === "trade") {
+      renderTradeLegend();
+      return;
+    }
     const mode = MODES[currentMode];
+    const modeCounts = counts[currentMode];
+    const total = Object.keys(modeCounts).filter((value) => palettes[currentMode][value]).length;
+
     const title = document.createElement("div");
     title.className = "title";
-    title.textContent = mode.title;
+    let heading = mode.title + " (" + total + ")";
+    if (currentMode === "nation" && data.nation_date) {
+      heading += " - " + data.nation_date;
+    }
+    title.textContent = heading;
     legendEl.appendChild(title);
 
-    const modeCounts = counts[currentMode];
-    const entries = Object.keys(modeCounts).sort((a, b) => modeCounts[b] - modeCounts[a]);
-    const shown = mode.legendLimit ? entries.slice(0, mode.legendLimit) : entries;
+    const input = document.createElement("input");
+    input.type = "search";
+    input.placeholder = "Search " + mode.title.toLowerCase() + "...";
+    input.value = filterText;
+    legendEl.appendChild(input);
 
-    shown.forEach((value) => {
-      const color = value === UNSET_LABEL ? UNSET_COLOR : palettes[currentMode][value];
-      legendEl.appendChild(legendRow(color, labelOf(currentMode, value) + " (" + modeCounts[value] + ")"));
+    const rowsEl = document.createElement("div");
+    rowsEl.className = "rows";
+    legendEl.appendChild(rowsEl);
+    fillRows(rowsEl);
+
+    input.addEventListener("input", () => {
+      filterText = input.value;
+      fillRows(rowsEl);
     });
+    rowsEl.addEventListener("click", (event) => {
+      const row = event.target.closest(".row");
+      if (row) {
+        selectValue(row.dataset.value);
+      }
+    });
+    legendEl.style.display = "flex";
+  }
 
-    const hidden = entries.slice(shown.length);
-    if (hidden.length) {
-      const total = hidden.reduce((sum, value) => sum + modeCounts[value], 0);
-      const note = document.createElement("div");
-      note.textContent = "+ " + hidden.length + " smaller (" + total + " provinces)";
-      note.style.marginTop = "4px";
-      note.style.fontStyle = "italic";
-      legendEl.appendChild(note);
+  function selectValue(value) {
+    selected = selected === value ? null : value;
+    provinceLayer.setStyle(styleFor);
+    legendEl.querySelectorAll(".row").forEach((row) => {
+      row.classList.toggle("selected", row.dataset.value === selected);
+    });
+    if (selected === null) {
+      return;
     }
-    legendEl.style.display = "block";
+    let bounds = null;
+    provinceLayer.eachLayer((layer) => {
+      if (keyOf(layer.feature, currentMode) === selected) {
+        bounds = bounds ? bounds.extend(layer.getBounds()) : L.latLngBounds(layer.getBounds().getSouthWest(), layer.getBounds().getNorthEast());
+        layer.bringToFront();
+      }
+    });
+    if (bounds) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 1 });
+    }
   }
 
   function setMode(mode) {
     currentMode = mode;
+    selected = null;
+    filterText = "";
     if (provinceLayer) {
       provinceLayer.setStyle(styleFor);
     }
     modesEl.querySelectorAll("button").forEach((button) => {
       button.classList.toggle("active", button.dataset.mode === mode);
     });
+    if (tradeLayer) {
+      if (mode === "trade") {
+        tradeLayer.addTo(map).bringToFront();
+      } else {
+        tradeLayer.remove();
+      }
+    }
     renderLegend();
   }
 
   function tooltipFor(properties) {
     const box = document.createElement("div");
+    const unset = properties.kind === "sea" ? "Sea" : properties.kind === "wasteland" ? "Wasteland" : "Unassigned";
+    let nation = properties.nation ? properties.nation + (properties.nation_rank ? " (" + properties.nation_rank + ")" : "") : unset;
     const lines = [
       properties.name + " (#" + properties.id + ")",
-      "Culture: " + (properties.culture || UNSET_LABEL),
-      "Religion: " + (properties.religion || UNSET_LABEL),
-      "Nation: " + (properties.nation || UNSET_LABEL)
+      "Culture: " + (properties.culture || unset),
+      "Religion: " + (properties.religion || unset),
+      "Nation: " + nation
     ];
     lines.forEach((text, index) => {
       const line = document.createElement("div");
@@ -251,9 +427,10 @@
     Object.keys(MODES).forEach((mode) => {
       const values = [];
       counts[mode] = {};
+      officialColors[mode] = {};
       data.features.forEach((feature) => {
         const value = valueOf(feature, mode);
-        const key = value === null ? UNSET_LABEL : value;
+        const key = keyOf(feature, mode);
         counts[mode][key] = (counts[mode][key] || 0) + 1;
         if (value !== null) {
           values.push(value);
@@ -261,8 +438,14 @@
         if (mode === "nation" && value !== null) {
           nationNames[value] = feature.properties.nation;
         }
+        const official = feature.properties[MODES[mode].colorKey];
+        if (value !== null && official && /^#[0-9a-f]{6}$/i.test(official)) {
+          officialColors[mode][value] = official;
+        }
       });
       palettes[mode] = buildPalette(values);
+      // official game colors win; values without one keep the generated color
+      Object.assign(palettes[mode], officialColors[mode]);
     });
 
     provinceLayer = L.geoJSON(data, {
@@ -281,7 +464,22 @@
       }
     }).addTo(map);
 
+    if (TRADE && TRADE.features && TRADE.features.length) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.mode = "trade";
+      button.textContent = "Trade Routes Mode";
+      modesEl.appendChild(button);
+      tradeLayer = L.geoJSON(TRADE, {
+        style: (feature) => ({ color: tradeColor(feature), weight: 3, opacity: 0.95 }),
+        onEachFeature: (feature, layer) => {
+          layer.bindTooltip(feature.properties.display_name || feature.properties.name, { sticky: true });
+        }
+      });
+    }
+
     map.fitBounds(provinceLayer.getBounds());
+    setMode("nation");
   }
 </script>
 </body>
