@@ -353,7 +353,7 @@ def enrich_provinces(collection, realm_colors, religion_colors, culture_colors, 
             if key and key in realm_colors:
                 realm_color = realm_colors[key]
                 break
-        props["realm_color"] = realm_color
+        props["realm_color"] = realm_color or props.get("realm_color")  # keep an earlier color if none found
         stats["realm"] += realm_color is not None
 
         religion, culture = props.get("religion"), props.get("culture")
@@ -418,7 +418,8 @@ def main():
 
     common = Path(args.common)
     paths = {
-        "landed": common / "landed_titles" / "landed_titles.txt",
+        # the whole folder: titles live in landed_titles.txt AND the regional files beside it
+        "landed": common / "landed_titles",
         "religions": common / "religions",
         "cultures": common / "cultures",
         "routes": common / "trade_routes",

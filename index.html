@@ -301,7 +301,10 @@
     if (own && /^#[0-9a-f]{6}$/i.test(own)) {
       return own;
     }
-    return "#b3261e";
+    // routes without their own color get one each, in a fixed order
+    const names = [...new Set(TRADE.features.map((f) => f.properties.name))].sort();
+    const fallback = ["#b3261e", "#0b5fa5", "#1b7f3b", "#7b2cbf", "#c76b00", "#006d77"];
+    return fallback[names.indexOf(feature.properties.name) % fallback.length];
   }
 
   function renderLegend() {

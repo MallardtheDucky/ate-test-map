@@ -92,11 +92,44 @@ def is_held(titles, title):
     return entry["holder"] not in (None, "0") and entry["active"] != "no"
 
 
-def realm_chain(titles, county):
+TIER = {"b": 0, "c": 1, "d": 2, "k": 3, "e": 4}
+
+
+def primary_titles(titles):
+    """{holder: primary title}. All titles one character holds belong to one realm,
+    and the highest-tier one (ties: the one with a held liege, then alphabetical) is the
+    character's primary title. This is what puts c_las_vegas under d_pharaohs when the
+    same ruler holds both, even though no `liege =` line says so."""
+    best = {}
+    for key in sorted(titles):
+        entry = titles[key]
+        if key[:2] not in {t + "_" for t in TIER} or not is_held(titles, key):
+            continue
+        has_liege = entry["liege"] is not None and is_held(titles, entry["liege"])
+        rank = (TIER[key[0]], has_liege)
+        holder = entry["holder"]
+        if holder not in best or rank > best[holder][0]:
+            best[holder] = (rank, key)
+    return {holder: key for holder, (rank, key) in best.items()}
+
+
+def realm_chain(titles, county, primary=None):
+    """Titles from `county` up to the top of its realm.
+
+    Two steps repeat: a title held by a character whose primary title is a different
+    one joins that primary title (same ruler = same realm); the primary title then
+    follows its explicit liege. Stops at the first title with no held liege."""
+    if primary is None:
+        primary = primary_titles(titles)
     chain = [county]
     while True:
-        liege = titles[chain[-1]]["liege"]
-        if liege is None or not is_held(titles, liege) or liege in chain:
+        current = chain[-1]
+        top = primary.get(titles[current]["holder"], current)
+        if top != current and top not in chain:
+            chain.append(top)
+            continue
+        liege = titles[current]["liege"]
+        if liege is None or liege not in titles or not is_held(titles, liege) or liege in chain:
             return chain
         chain.append(liege)
 
@@ -196,6 +229,7 @@ def main():
         realm_colors = plt.parse_landed_titles(landed)
         print(f"read {len(realm_colors)} title colors from {landed}")
 
+    primary = primary_titles(titles)
     guessed = set()
     assigned = 0
     unowned = 0
@@ -214,7 +248,7 @@ def main():
         if not is_held(titles, county):
             unowned += 1
             continue
-        top = realm_chain(titles, county)[-1]
+        top = realm_chain(titles, county, primary)[-1]
         name, found = display_name(top, names)
         if not found:
             guessed.add(top)
