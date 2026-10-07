@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Province Map</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="lib/leaflet.css">
+<style>
+  html, body, #map {
+    height: 100%;
+    margin: 0;
+    background: #ffffff;
+  }
+  #modes {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1000;
+    display: flex;
+    gap: 8px;
+  }
+  #modes button {
+    padding: 8px 14px;
+    font: 600 13px sans-serif;
+    color: #000000;
+    background: #ffffff;
+    border: 2px solid #000000;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  #modes button.active {
+    color: #ffffff;
+    background: #000000;
+  }
+  #legend {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    z-index: 1000;
+    display: none;
+    max-height: 55%;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font: 12px/1.6 sans-serif;
+    background: rgba(255, 255, 255, 0.94);
+    border: 2px solid #000000;
+    border-radius: 4px;
+  }
+  #legend .title {
+    margin-bottom: 4px;
+    font-weight: 700;
+  }
+  #legend .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+    border: 1px solid #000000;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="modes">
+  <button type="button" data-mode="culture">Culture Mode</button>
+  <button type="button" data-mode="religion">Religion Mode</button>
+</div>
+<div id="legend"></div>
+<script src="lib/leaflet.js"></script>
+<script src="data/provinces.js"></script>
+<script>
+  const UNSET_COLOR = "#bdbdbd";
+  const UNSET_LABEL = "Unassigned";
+  const MODE_TITLES = { culture: "Culture", religion: "Religion" };
+
+  const map = L.map("map", {
+    crs: L.CRS.Simple,
+    minZoom: -6,
+    maxZoom: 4,
+    zoomSnap: 0.25,
+    zoomDelta: 0.5,
+    attributionControl: false,
+    preferCanvas: true
+  });
+
+  const modesEl = document.getElementById("modes");
+  const legendEl = document.getElementById("legend");
+  L.DomEvent.disableClickPropagation(modesEl);
+  L.DomEvent.disableClickPropagation(legendEl);
+  L.DomEvent.disableScrollPropagation(legendEl);
+
+  let provinceLayer = null;
+  let currentMode = null;
+  const palettes = {};
+  const counts = {};
+
+  function hslToHex(h, s, l) {
+    s /= 100;
+    l /= 100;
+    const k = (n) => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    const toHex = (x) => Math.round(x * 255).toString(16).padStart(2, "0");
+    return "#" + toHex(f(0)) + toHex(f(8)) + toHex(f(4));
+  }
+
+  function buildPalette(values) {
+    const palette = {};
+    [...new Set(values)].sort().forEach((value, index) => {
+      const hue = (index * 137.508) % 360;
+      const saturation = 62 + (index % 3) * 12;
+      const lightness = 40 + (index % 4) * 8;
+      palette[value] = hslToHex(hue, saturation, lightness);
+    });
+    return palette;
+  }
+
+  function colorFor(feature) {
+    if (!currentMode) {
+      return null;
+    }
+    const value = feature.properties[currentMode];
+    if (value === null || value === undefined || value === "") {
+      return UNSET_COLOR;
+    }
+    return palettes[currentMode][value] || UNSET_COLOR;
+  }
+
+  function styleFor(feature) {
+    const fill = colorFor(feature);
+    return {
+      color: "#000000",
+      weight: 1,
+      opacity: 1,
+      fill: true,
+      fillColor: fill || "#000000",
+      fillOpacity: fill ? 0.8 : 0
+    };
+  }
+
+  function renderLegend() {
+    legendEl.textContent = "";
+    if (!currentMode) {
+      legendEl.style.display = "none";
+      return;
+    }
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = MODE_TITLES[currentMode];
+    legendEl.appendChild(title);
+
+    const entries = Object.keys(counts[currentMode])
+      .sort((a, b) => counts[currentMode][b] - counts[currentMode][a]);
+
+    entries.forEach((value) => {
+      const row = document.createElement("div");
+      const swatch = document.createElement("span");
+      swatch.className = "swatch";
+      swatch.style.background = value === UNSET_LABEL
+        ? UNSET_COLOR
+        : palettes[currentMode][value];
+      row.appendChild(swatch);
+      row.appendChild(document.createTextNode(value + " (" + counts[currentMode][value] + ")"));
+      legendEl.appendChild(row);
+    });
+    legendEl.style.display = "block";
+  }
+
+  function setMode(mode) {
+    currentMode = mode;
+    if (provinceLayer) {
+      provinceLayer.setStyle(styleFor);
+    }
+    modesEl.querySelectorAll("button").forEach((button) => {
+      button.classList.toggle("active", button.dataset.mode === mode);
+    });
+    renderLegend();
+  }
+
+  function tooltipFor(properties) {
+    const box = document.createElement("div");
+    const lines = [
+      properties.name + " (#" + properties.id + ")",
+      "Culture: " + (properties.culture || UNSET_LABEL),
+      "Religion: " + (properties.religion || UNSET_LABEL)
+    ];
+    lines.forEach((text, index) => {
+      const line = document.createElement("div");
+      line.textContent = text;
+      if (index === 0) {
+        line.style.fontWeight = "700";
+      }
+      box.appendChild(line);
+    });
+    return box;
+  }
+
+  modesEl.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-mode]");
+    if (button) {
+      setMode(button.dataset.mode);
+    }
+  });
+
+  const data = window.PROVINCES_DATA;
+  if (!data) {
+    document.getElementById("map").textContent = "data/provinces.js is missing or failed to load";
+  } else {
+    Object.keys(MODE_TITLES).forEach((mode) => {
+      const values = [];
+      counts[mode] = {};
+      data.features.forEach((feature) => {
+        const value = feature.properties[mode];
+        const key = value === null || value === undefined || value === "" ? UNSET_LABEL : value;
+        counts[mode][key] = (counts[mode][key] || 0) + 1;
+        if (key !== UNSET_LABEL) {
+          values.push(key);
+        }
+      });
+      palettes[mode] = buildPalette(values);
+    });
+
+    provinceLayer = L.geoJSON(data, {
+      style: styleFor,
+      onEachFeature: (feature, layer) => {
+        layer.bindTooltip(tooltipFor(feature.properties), { sticky: true });
+      }
+    }).addTo(map);
+
+    map.fitBounds(provinceLayer.getBounds());
+  }
+</script>
+</body>
+</html>
