@@ -65,6 +65,7 @@
 <div id="modes">
   <button type="button" data-mode="culture">Culture Mode</button>
   <button type="button" data-mode="religion">Religion Mode</button>
+  <button type="button" data-mode="nation">Nation Mode</button>
 </div>
 <div id="legend"></div>
 <script src="lib/leaflet.js"></script>
@@ -72,7 +73,11 @@
 <script>
   const UNSET_COLOR = "#bdbdbd";
   const UNSET_LABEL = "Unassigned";
-  const MODE_TITLES = { culture: "Culture", religion: "Religion" };
+  const MODES = {
+    culture: { title: "Culture", key: "culture" },
+    religion: { title: "Religion", key: "religion" },
+    nation: { title: "Nation", key: "nation_title", legendLimit: 40 }
+  };
 
   const map = L.map("map", {
     crs: L.CRS.Simple,
@@ -94,6 +99,7 @@
   let currentMode = null;
   const palettes = {};
   const counts = {};
+  const nationNames = {};
 
   function hslToHex(h, s, l) {
     s /= 100;
@@ -116,12 +122,24 @@
     return palette;
   }
 
+  function valueOf(feature, mode) {
+    const value = feature.properties[MODES[mode].key];
+    return value === null || value === undefined || value === "" ? null : value;
+  }
+
+  function labelOf(mode, value) {
+    if (value === UNSET_LABEL) {
+      return UNSET_LABEL;
+    }
+    return mode === "nation" ? nationNames[value] || value : value;
+  }
+
   function colorFor(feature) {
     if (!currentMode) {
       return null;
     }
-    const value = feature.properties[currentMode];
-    if (value === null || value === undefined || value === "") {
+    const value = valueOf(feature, currentMode);
+    if (value === null) {
       return UNSET_COLOR;
     }
     return palettes[currentMode][value] || UNSET_COLOR;
@@ -139,31 +157,53 @@
     };
   }
 
+  function hoverStyleFor(feature) {
+    if (colorFor(feature)) {
+      return { weight: 3, fillOpacity: 1 };
+    }
+    return { weight: 3, fillColor: "#000000", fillOpacity: 0.15 };
+  }
+
+  function legendRow(color, text) {
+    const row = document.createElement("div");
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = color;
+    row.appendChild(swatch);
+    row.appendChild(document.createTextNode(text));
+    return row;
+  }
+
   function renderLegend() {
     legendEl.textContent = "";
     if (!currentMode) {
       legendEl.style.display = "none";
       return;
     }
+    const mode = MODES[currentMode];
     const title = document.createElement("div");
     title.className = "title";
-    title.textContent = MODE_TITLES[currentMode];
+    title.textContent = mode.title;
     legendEl.appendChild(title);
 
-    const entries = Object.keys(counts[currentMode])
-      .sort((a, b) => counts[currentMode][b] - counts[currentMode][a]);
+    const modeCounts = counts[currentMode];
+    const entries = Object.keys(modeCounts).sort((a, b) => modeCounts[b] - modeCounts[a]);
+    const shown = mode.legendLimit ? entries.slice(0, mode.legendLimit) : entries;
 
-    entries.forEach((value) => {
-      const row = document.createElement("div");
-      const swatch = document.createElement("span");
-      swatch.className = "swatch";
-      swatch.style.background = value === UNSET_LABEL
-        ? UNSET_COLOR
-        : palettes[currentMode][value];
-      row.appendChild(swatch);
-      row.appendChild(document.createTextNode(value + " (" + counts[currentMode][value] + ")"));
-      legendEl.appendChild(row);
+    shown.forEach((value) => {
+      const color = value === UNSET_LABEL ? UNSET_COLOR : palettes[currentMode][value];
+      legendEl.appendChild(legendRow(color, labelOf(currentMode, value) + " (" + modeCounts[value] + ")"));
     });
+
+    const hidden = entries.slice(shown.length);
+    if (hidden.length) {
+      const total = hidden.reduce((sum, value) => sum + modeCounts[value], 0);
+      const note = document.createElement("div");
+      note.textContent = "+ " + hidden.length + " smaller (" + total + " provinces)";
+      note.style.marginTop = "4px";
+      note.style.fontStyle = "italic";
+      legendEl.appendChild(note);
+    }
     legendEl.style.display = "block";
   }
 
@@ -183,7 +223,8 @@
     const lines = [
       properties.name + " (#" + properties.id + ")",
       "Culture: " + (properties.culture || UNSET_LABEL),
-      "Religion: " + (properties.religion || UNSET_LABEL)
+      "Religion: " + (properties.religion || UNSET_LABEL),
+      "Nation: " + (properties.nation || UNSET_LABEL)
     ];
     lines.forEach((text, index) => {
       const line = document.createElement("div");
@@ -207,15 +248,18 @@
   if (!data) {
     document.getElementById("map").textContent = "data/provinces.js is missing or failed to load";
   } else {
-    Object.keys(MODE_TITLES).forEach((mode) => {
+    Object.keys(MODES).forEach((mode) => {
       const values = [];
       counts[mode] = {};
       data.features.forEach((feature) => {
-        const value = feature.properties[mode];
-        const key = value === null || value === undefined || value === "" ? UNSET_LABEL : value;
+        const value = valueOf(feature, mode);
+        const key = value === null ? UNSET_LABEL : value;
         counts[mode][key] = (counts[mode][key] || 0) + 1;
-        if (key !== UNSET_LABEL) {
-          values.push(key);
+        if (value !== null) {
+          values.push(value);
+        }
+        if (mode === "nation" && value !== null) {
+          nationNames[value] = feature.properties.nation;
         }
       });
       palettes[mode] = buildPalette(values);
@@ -224,7 +268,16 @@
     provinceLayer = L.geoJSON(data, {
       style: styleFor,
       onEachFeature: (feature, layer) => {
-        layer.bindTooltip(tooltipFor(feature.properties), { sticky: true });
+        layer.bindTooltip(() => tooltipFor(feature.properties), { sticky: true });
+        layer.on({
+          mouseover: (event) => {
+            event.target.setStyle(hoverStyleFor(feature));
+            event.target.bringToFront();
+          },
+          mouseout: (event) => {
+            provinceLayer.resetStyle(event.target);
+          }
+        });
       }
     }).addTo(map);
 
