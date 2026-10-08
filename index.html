@@ -464,13 +464,16 @@
     if (currentMode === "vassal" && BORDERS) {
       // the border lines carry the outlines; province edges stay faint
       const dimmed = selected !== null && !picked;
+      // sea, wasteland and nations without vassals stay pale so the vassal realms stand out
+      const info = vassalInfo[feature.properties.nation_title];
+      const quiet = feature.properties.kind !== "land" || !info || !info.list.length;
       return {
         color: "#000000",
         weight: 0.4,
         opacity: 0.2,
         fill: true,
         fillColor: fill || "#000000",
-        fillOpacity: fill ? (dimmed ? 0.25 : 0.95) : 0
+        fillOpacity: !fill ? 0 : dimmed ? 0.25 : quiet ? 0.5 : 0.95
       };
     }
     return {
@@ -579,7 +582,7 @@
     Object.values(vassalInfo).forEach((n) => {
       n.list = Object.values(n.vassals).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
       // nations with no vassals are muted so the ones that do stand out
-      palettes.vassal[n.key] = n.list.length ? n.color : NO_VASSALS_COLOR;
+      palettes.vassal[n.key] = n.color;
       n.list.forEach((v, index) => {
         palettes.vassal[v.key] = vassalShade(n.color, index);
       });
@@ -659,7 +662,7 @@
 
     const hint = document.createElement("div");
     hint.className = "hint";
-    hint.textContent = "Each nation has its own color, its vassals are shades of it. Black lines are nation borders, thin lines vassal borders. Grey = nation without vassals.";
+    hint.textContent = "Each nation has its own color, its vassals are shades of it. Thick black lines are nation borders, thin lines vassal borders. Pale colors = nations without vassals.";
     legendEl.appendChild(hint);
 
     const input = document.createElement("input");
@@ -986,8 +989,8 @@
       map.getPane("borders").style.pointerEvents = "none";
       const renderer = L.canvas({ pane: "borders" });
       const lines = (list) => ({ type: "MultiLineString", coordinates: list });
-      borderLayers.push(L.geoJSON(lines(BORDERS.vassal), { pane: "borders", renderer, interactive: false, style: { color: "#222222", weight: 1.6, opacity: 0.85 } }));
-      borderLayers.push(L.geoJSON(lines(BORDERS.nation), { pane: "borders", renderer, interactive: false, style: { color: "#000000", weight: 2, opacity: 0.95 } }));
+      borderLayers.push(L.geoJSON(lines(BORDERS.vassal), { pane: "borders", renderer, interactive: false, style: { color: "#222222", weight: 1, opacity: 0.7 } }));
+      borderLayers.push(L.geoJSON(lines(BORDERS.nation), { pane: "borders", renderer, interactive: false, style: { color: "#000000", weight: 1.8, opacity: 0.9 } }));
     }
 
     provinceLayer = L.geoJSON(data, {
