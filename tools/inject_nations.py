@@ -242,13 +242,40 @@ def main():
         properties["nation"] = None
         properties["nation_rank"] = None
         properties["realm_color"] = None
+        properties["vassal_title"] = None
+        properties["vassal"] = None
+        properties["vassal_rank"] = None
+        properties["vassal_color"] = None
+        properties["vassal_direct"] = None
+        properties["liege_chain"] = None
         properties["kind"] = "sea" if properties["id"] in sea else ("land" if county else "wasteland")
         if county is None or county not in titles:
             continue
         if not is_held(titles, county):
             unowned += 1
             continue
-        top = realm_chain(titles, county, primary)[-1]
+        chain = realm_chain(titles, county, primary)
+        top = chain[-1]
+        # The direct vassal is the last title on the chain that a different ruler holds; its
+        # holder's primary title names the vassal realm. No such title = the nation's own ruler
+        # holds the county directly, so the nation itself stands in as the "vassal".
+        top_holder = titles[top]["holder"]
+        differing = [t for t in chain if titles[t]["holder"] != top_holder]
+        vassal_key = differing[-1] if differing else top
+        vassal_name, vassal_found = display_name(vassal_key, names)
+        if not vassal_found:
+            guessed.add(vassal_key)
+        properties["vassal_title"] = vassal_key
+        properties["vassal"] = vassal_name + (" (held directly)" if not differing else "")
+        properties["vassal_rank"] = RANKS[vassal_key[0]]
+        properties["vassal_color"] = realm_colors.get(vassal_key)
+        properties["vassal_direct"] = not differing
+        shown = []
+        for t in chain:
+            label = display_name(t, names)[0]
+            if not shown or shown[-1] != label:
+                shown.append(label)
+        properties["liege_chain"] = " > ".join(shown)
         name, found = display_name(top, names)
         if not found:
             guessed.add(top)
@@ -276,6 +303,9 @@ def main():
             print(f"{len(no_color)} realm titles have no color block in landed_titles and get no realm_color (first few: {no_color[:8]})", file=sys.stderr)
     if guessed:
         print(f"{len(guessed)} realm titles have no localisation and use a name built from the title key (first few: {sorted(guessed)[:8]})", file=sys.stderr)
+    vassals = {f["properties"]["vassal_title"] for f in collection["features"] if f["properties"].get("vassal_title") and not f["properties"]["vassal_direct"]}
+    direct = sum(1 for f in collection["features"] if f["properties"].get("vassal_direct"))
+    print(f"{len(vassals)} direct vassal realms; {direct} provinces are held directly by their nation's ruler")
     largest = sorted(realms.items(), key=lambda item: -item[1])[:8]
     print("largest: " + ", ".join(f"{display_name(t, names)[0]} ({n})" for t, n in largest), file=sys.stderr)
 

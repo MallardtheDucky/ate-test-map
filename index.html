@@ -17,6 +17,9 @@
     right: 12px;
     z-index: 1000;
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: calc(100% - 24px);
     gap: 8px;
   }
   #modes button {
@@ -34,7 +37,7 @@
   }
   #legend {
     position: absolute;
-    top: 56px;
+    top: 104px;
     bottom: 12px;
     right: 12px;
     z-index: 1000;
@@ -100,6 +103,12 @@
   <button type="button" data-mode="culture">Culture Mode</button>
   <button type="button" data-mode="religion">Religion Mode</button>
   <button type="button" data-mode="nation">Nation Mode</button>
+  <button type="button" data-mode="vassal">Vassal Mode</button>
+  <button type="button" data-mode="government">Government Mode</button>
+  <button type="button" data-mode="empire">Empire Mode</button>
+  <button type="button" data-mode="kingdom">Kingdom Mode</button>
+  <button type="button" data-mode="duchy">Duchy Mode</button>
+  <button type="button" data-mode="county">County Mode</button>
 </div>
 <div id="legend"></div>
 <script src="lib/leaflet.js"></script>
@@ -112,6 +121,13 @@
     religion: { title: "Religion", key: "religion" },
     nation: { title: "Nation", key: "nation_title", colorKey: "realm_color" }
   };
+  MODES.vassal = { title: "Vassal", key: "vassal_title", colorKey: "vassal_color", nameKey: "vassal" };
+  MODES.government = { title: "Government", key: "government", colorKey: "government_color", nameKey: "government_name" };
+  MODES.empire = { title: "De jure Empire", key: "jure_empire", colorKey: "jure_empire_color", nameKey: "jure_empire_name" };
+  MODES.kingdom = { title: "De jure Kingdom", key: "jure_kingdom", colorKey: "jure_kingdom_color", nameKey: "jure_kingdom_name" };
+  MODES.duchy = { title: "De jure Duchy", key: "jure_duchy", colorKey: "jure_duchy_color", nameKey: "jure_duchy_name" };
+  MODES.county = { title: "County", key: "title", colorKey: "title_color", nameKey: "title_name" };
+  MODES.nation.nameKey = "nation";
   MODES.culture.colorKey = "culture_color";
   MODES.religion.colorKey = "religion_color";
   const TRADE = window.TRADE_ROUTES_DATA || null;
@@ -141,7 +157,7 @@
   const palettes = {};
   const officialColors = {};
   const counts = {};
-  const nationNames = {};
+  const valueNames = {};
 
   function hslToHex(h, s, l) {
     s /= 100;
@@ -190,7 +206,7 @@
     if (UNSET_COLORS[value] && !palettes[mode][value]) {
       return value;
     }
-    return mode === "nation" ? nationNames[value] || value : value;
+    return (valueNames[mode] && valueNames[mode][value]) || value;
   }
 
   function colorFor(feature) {
@@ -405,6 +421,21 @@
       "Religion: " + (properties.religion || unset),
       "Nation: " + nation
     ];
+    if (properties.vassal) {
+      lines.push("Vassal realm: " + properties.vassal + (properties.vassal_rank && !properties.vassal_direct ? " (" + properties.vassal_rank + ")" : ""));
+    }
+    if (properties.government_name) {
+      lines.push("Government: " + properties.government_name + (properties.government_certain === false ? " (estimated)" : ""));
+    }
+    if (properties.jure_chain) {
+      lines.push("De jure: " + properties.jure_chain);
+    }
+    if (properties.baronies) {
+      lines.push("Baronies: " + properties.baronies);
+    }
+    if (properties.liege_chain) {
+      lines.push("Chain: " + properties.liege_chain);
+    }
     lines.forEach((text, index) => {
       const line = document.createElement("div");
       line.textContent = text;
@@ -438,8 +469,9 @@
         if (value !== null) {
           values.push(value);
         }
-        if (mode === "nation" && value !== null) {
-          nationNames[value] = feature.properties.nation;
+        if (MODES[mode].nameKey && value !== null) {
+          valueNames[mode] = valueNames[mode] || {};
+          valueNames[mode][value] = feature.properties[MODES[mode].nameKey];
         }
         const official = feature.properties[MODES[mode].colorKey];
         if (value !== null && official && /^#[0-9a-f]{6}$/i.test(official)) {
