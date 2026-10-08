@@ -19,17 +19,94 @@
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
-    max-width: calc(100% - 24px);
-    gap: 8px;
+    max-width: calc(100% - 80px);
+    gap: 6px 14px;
+    padding: 6px 10px 8px;
+    background: rgba(255, 255, 255, 0.94);
+    border: 2px solid #000000;
+    border-radius: 6px;
+  }
+  #modes .group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  #modes .group:empty {
+    display: none;
+  }
+  #modes .group::before {
+    content: attr(data-label);
+    flex: 0 0 100%;
+    font: 700 10px sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #555555;
   }
   #modes button {
-    padding: 8px 14px;
-    font: 600 13px sans-serif;
+    padding: 5px 10px;
+    font: 600 12px sans-serif;
     color: #000000;
     background: #ffffff;
-    border: 2px solid #000000;
+    border: 1.5px solid #000000;
     border-radius: 4px;
     cursor: pointer;
+  }
+  #modes button:hover {
+    background: #ffe98a;
+  }
+  .leaflet-tooltip.pm-tip {
+    width: 310px;
+    max-width: 310px;
+    padding: 0;
+    white-space: normal;
+    font: 13px/1.4 sans-serif;
+    color: #111111;
+    background: #ffffff;
+    border: 1px solid #333333;
+    border-radius: 6px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+  }
+  .pm-tip .head {
+    padding: 8px 12px 6px;
+    border-bottom: 1px solid #dddddd;
+  }
+  .pm-tip .head b {
+    font-size: 15px;
+  }
+  .pm-tip .sub {
+    font-size: 12px;
+    color: #555555;
+  }
+  .pm-tip .grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0 12px;
+    padding: 6px 12px 8px;
+  }
+  .pm-tip .k {
+    padding: 2px 0;
+    color: #666666;
+    white-space: nowrap;
+  }
+  .pm-tip .v {
+    padding: 2px 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .pm-tip .v small {
+    font-weight: 400;
+    color: #555555;
+  }
+  .pm-tip .hl {
+    background: #fff3b8;
+  }
+  .pm-tip .sw {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 5px;
+    border: 1px solid #000000;
+    vertical-align: baseline;
   }
   #modes button.active {
     color: #ffffff;
@@ -84,6 +161,40 @@
     font-weight: 700;
     background: #ffe98a;
   }
+  #legend .hint {
+    margin-bottom: 6px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #444444;
+  }
+  #legend .opts {
+    margin-bottom: 4px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  #legend .opts input {
+    width: auto;
+    margin: 0 4px 0 0;
+    vertical-align: middle;
+  }
+  #legend .row.nation {
+    font-weight: 700;
+  }
+  #legend .row.vassal {
+    padding-left: 30px;
+  }
+  #legend .row.vassal .rank,
+  #legend .row .more {
+    font-weight: 400;
+    color: #666666;
+    font-size: 11px;
+  }
+  #legend .caret {
+    display: inline-block;
+    width: 16px;
+    color: #000000;
+    text-align: center;
+  }
   #legend .empty {
     font-style: italic;
   }
@@ -100,28 +211,52 @@
 <body>
 <div id="map"></div>
 <div id="modes">
-  <button type="button" data-mode="culture">Culture Mode</button>
-  <button type="button" data-mode="religion">Religion Mode</button>
-  <button type="button" data-mode="nation">Nation Mode</button>
-  <button type="button" data-mode="vassal">Vassal Mode</button>
-  <button type="button" data-mode="government">Government Mode</button>
-  <button type="button" data-mode="empire">Empire Mode</button>
-  <button type="button" data-mode="kingdom">Kingdom Mode</button>
-  <button type="button" data-mode="duchy">Duchy Mode</button>
-  <button type="button" data-mode="county">County Mode</button>
+  <div class="group" data-label="Who rules">
+    <button type="button" data-mode="nation">Nation</button>
+    <button type="button" data-mode="vassal">Vassals</button>
+    <button type="button" data-mode="government">Government</button>
+  </div>
+  <div class="group" data-label="People">
+    <button type="button" data-mode="culture">Culture</button>
+    <button type="button" data-mode="religion">Religion</button>
+  </div>
+  <div class="group" data-label="De jure (historic claims)">
+    <button type="button" data-mode="empire">Empire</button>
+    <button type="button" data-mode="kingdom">Kingdom</button>
+    <button type="button" data-mode="duchy">Duchy</button>
+    <button type="button" data-mode="county">County</button>
+  </div>
+  <div class="group" data-label="Other" id="grp-other"></div>
 </div>
 <div id="legend"></div>
 <script src="lib/leaflet.js"></script>
 <script src="data/provinces.js"></script>
 <script src="data/trade_routes.js" onerror="this.remove()"></script>
+<script src="data/borders.js" onerror="this.remove()"></script>
 <script>
   const UNSET_COLORS = { Sea: "#a9c4d6", Wasteland: "#d8d2c4", Unassigned: "#bdbdbd" };
+  const HINTS = {
+    nation: "One color per nation (the top title of a realm). Thick black lines are nation borders.",
+    government: "Colored by the government type of each nation's ruler.",
+    culture: "Colored by the culture of each province.",
+    religion: "Colored by the religion of each province.",
+    empire: "Historic (de jure) empires, whoever rules them today.",
+    kingdom: "Historic (de jure) kingdoms, whoever rules them today.",
+    duchy: "Historic (de jure) duchies, whoever rules them today.",
+    county: "One color per county."
+  };
   const MODES = {
     culture: { title: "Culture", key: "culture" },
     religion: { title: "Religion", key: "religion" },
     nation: { title: "Nation", key: "nation_title", colorKey: "realm_color" }
   };
-  MODES.vassal = { title: "Vassal", key: "vassal_title", colorKey: "vassal_color", nameKey: "vassal" };
+  MODES.vassal = { title: "Vassal", key: "vassal_title", nameKey: "vassal" };
+  const BORDERS = window.BORDERS_DATA || null;
+  const borderLayers = [];
+  const vassalInfo = {};
+  const NO_VASSALS_COLOR = "#d4d0c2";
+  const vassalExpanded = new Set();
+  let vassalOnlyWith = true;
   MODES.government = { title: "Government", key: "government", colorKey: "government_color", nameKey: "government_name" };
   MODES.empire = { title: "De jure Empire", key: "jure_empire", colorKey: "jure_empire_color", nameKey: "jure_empire_name" };
   MODES.kingdom = { title: "De jure Kingdom", key: "jure_kingdom", colorKey: "jure_kingdom_color", nameKey: "jure_kingdom_name" };
@@ -224,16 +359,56 @@
     return palettes[currentMode][value] || UNSET_COLORS.Unassigned;
   }
 
+  // A province is "picked" when it belongs to the legend row that is selected.
+  // In Vassal Mode a row can also be a whole nation ("nation:<title>").
+  function isPicked(feature) {
+    if (selected === null) {
+      return false;
+    }
+    if (currentMode === "vassal" && selected.startsWith("nation:")) {
+      return feature.properties.nation_title === selected.slice(7);
+    }
+    return keyOf(feature, currentMode) === selected;
+  }
+
+  const NATION_BORDER_MODES = ["nation", "government"];
+
   function styleFor(feature) {
     const fill = colorFor(feature);
-    const picked = selected !== null && keyOf(feature, currentMode) === selected;
+    const picked = isPicked(feature);
+    const kind = feature.properties.kind;
+    if (currentMode === "vassal" && BORDERS) {
+      // the border lines carry the outlines; province edges stay faint
+      const dimmed = selected !== null && !picked;
+      return {
+        color: "#000000",
+        weight: 0.4,
+        opacity: 0.2,
+        fill: true,
+        fillColor: fill || "#000000",
+        fillOpacity: fill ? (dimmed ? 0.25 : 0.95) : 0
+      };
+    }
+    if (kind === "sea" || kind === "wasteland") {
+      // sea and wasteland sit quietly in the background so the land stands out
+      return {
+        color: kind === "sea" ? "#8fa8b8" : "#b8b09c",
+        weight: 0.4,
+        opacity: 0.5,
+        fill: true,
+        fillColor: fill || "#cccccc",
+        fillOpacity: 0.55
+      };
+    }
+    const nationLines = BORDERS && NATION_BORDER_MODES.includes(currentMode);
+    const dimmed = selected !== null && !picked;
     return {
-      color: picked ? "#ffffff" : "#000000",
-      weight: picked ? 2.5 : 1,
-      opacity: 1,
+      color: picked ? "#ffffff" : nationLines ? "#ffffff" : "#000000",
+      weight: picked ? 2.5 : 0.7,
+      opacity: picked ? 1 : nationLines ? 0.5 : 0.4,
       fill: true,
       fillColor: fill || "#000000",
-      fillOpacity: fill ? 0.8 : 0
+      fillOpacity: fill ? (dimmed ? 0.35 : 0.92) : 0
     };
   }
 
@@ -263,7 +438,8 @@
     const needle = filterText.trim().toLowerCase();
     const entries = Object.keys(modeCounts)
       .filter((value) => !needle || labelOf(currentMode, value).toLowerCase().includes(needle))
-      .sort((a, b) => modeCounts[b] - modeCounts[a] || labelOf(currentMode, a).localeCompare(labelOf(currentMode, b)));
+      .sort((a, b) => (UNSET_COLORS[a] && !palettes[currentMode][a] ? 1 : 0) - (UNSET_COLORS[b] && !palettes[currentMode][b] ? 1 : 0) ||
+        modeCounts[b] - modeCounts[a] || labelOf(currentMode, a).localeCompare(labelOf(currentMode, b)));
 
     entries.forEach((value) => {
       const color = palettes[currentMode][value] || UNSET_COLORS[value] || UNSET_COLORS.Unassigned;
@@ -275,6 +451,197 @@
       none.textContent = "No match";
       rowsEl.appendChild(none);
     }
+  }
+
+  function hexToHsl(hex) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0;
+    let s = 0;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h *= 60;
+    }
+    return [h, s * 100, l * 100];
+  }
+
+  // Each vassal realm gets a shade of its nation's color, so a nation reads as one family.
+  // The nation's own (directly held) land keeps the exact nation color.
+  function vassalShade(base, index) {
+    const [h, s, l] = hexToHsl(base);
+    // small hue nudges and a few lightness steps: related, but still easy to tell apart
+    const hueShift = ((index % 3) - 1) * 7;
+    const lightShift = [13, -12, 24, -22][index % 4];
+    const light = Math.max(30, Math.min(80, l + lightShift));
+    return hslToHex((h + hueShift + 360) % 360, Math.max(30, Math.min(85, s)), light);
+  }
+
+  function buildVassalInfo() {
+    data.features.forEach((feature) => {
+      const p = feature.properties;
+      if (!p.nation_title) {
+        return;
+      }
+      const n = vassalInfo[p.nation_title] || (vassalInfo[p.nation_title] = {
+        key: p.nation_title,
+        name: p.nation,
+        color: palettes.nation[p.nation_title] || UNSET_COLORS.Unassigned,
+        total: 0,
+        direct: 0,
+        vassals: {}
+      });
+      n.total += 1;
+      if (p.vassal_direct) {
+        n.direct += 1;
+      } else {
+        const v = n.vassals[p.vassal_title] || (n.vassals[p.vassal_title] = { key: p.vassal_title, name: p.vassal, rank: p.vassal_rank, count: 0 });
+        v.count += 1;
+      }
+    });
+    palettes.vassal = {};
+    Object.values(vassalInfo).forEach((n) => {
+      n.list = Object.values(n.vassals).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      // nations with no vassals are muted so the ones that do stand out
+      palettes.vassal[n.key] = n.list.length ? n.color : NO_VASSALS_COLOR;
+      n.list.forEach((v, index) => {
+        palettes.vassal[v.key] = vassalShade(n.color, index);
+      });
+    });
+  }
+
+  function vassalRow(kind, key, color, label, count, extra, caret) {
+    const row = document.createElement("div");
+    row.className = "row " + kind + (key === selected ? " selected" : "");
+    row.dataset.value = key;
+    row.dataset.kind = kind;
+    row.title = label;
+    if (kind === "nation") {
+      const c = document.createElement("span");
+      c.className = "caret";
+      c.textContent = caret || "";
+      row.appendChild(c);
+    }
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = color;
+    row.appendChild(swatch);
+    row.appendChild(document.createTextNode(label + " (" + count + ")"));
+    if (extra) {
+      const more = document.createElement("span");
+      more.className = kind === "nation" ? "more" : "rank";
+      more.textContent = " " + extra;
+      row.appendChild(more);
+    }
+    return row;
+  }
+
+  function fillVassalRows(rowsEl) {
+    rowsEl.textContent = "";
+    const needle = filterText.trim().toLowerCase();
+    const nations = Object.values(vassalInfo).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+    let shown = 0;
+    nations.forEach((n) => {
+      const hasVassals = n.list.length > 0;
+      if (vassalOnlyWith && !needle && !hasVassals) {
+        return;
+      }
+      const nationMatch = !needle || n.name.toLowerCase().includes(needle);
+      const matched = needle && !nationMatch ? n.list.filter((v) => v.name.toLowerCase().includes(needle)) : n.list;
+      if (!nationMatch && !matched.length) {
+        return;
+      }
+      const open = hasVassals && (vassalExpanded.has(n.key) || (needle && !nationMatch));
+      const extra = hasVassals ? "- " + n.list.length + " vassal" + (n.list.length === 1 ? "" : "s") : "";
+      rowsEl.appendChild(vassalRow("nation", "nation:" + n.key, palettes.vassal[n.key], n.name, n.total, extra, hasVassals ? (open ? "\u25BE" : "\u25B8") : ""));
+      shown += 1;
+      if (open) {
+        if (n.direct > 0 && !needle) {
+          rowsEl.appendChild(vassalRow("vassal", n.key, palettes.vassal[n.key], "Held directly", n.direct, "", ""));
+        }
+        matched.forEach((v) => {
+          rowsEl.appendChild(vassalRow("vassal", v.key, palettes.vassal[v.key], v.name, v.count, v.rank, ""));
+        });
+      }
+    });
+    if (!shown) {
+      const none = document.createElement("div");
+      none.className = "empty";
+      none.textContent = "No match";
+      rowsEl.appendChild(none);
+    }
+  }
+
+  function renderVassalLegend() {
+    const nations = Object.values(vassalInfo);
+    const vassalCount = nations.reduce((sum, n) => sum + n.list.length, 0);
+    const withVassals = nations.filter((n) => n.list.length).length;
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = "Vassals (" + vassalCount + " realms in " + withVassals + " nations)";
+    legendEl.appendChild(title);
+
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = "Each nation has its own color, its vassals are shades of it. Black lines are nation borders, thin lines vassal borders. Grey = nation without vassals.";
+    legendEl.appendChild(hint);
+
+    const input = document.createElement("input");
+    input.type = "search";
+    input.placeholder = "Search nation or vassal...";
+    input.value = filterText;
+    legendEl.appendChild(input);
+
+    const opts = document.createElement("label");
+    opts.className = "opts";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = vassalOnlyWith;
+    opts.appendChild(box);
+    opts.appendChild(document.createTextNode("Only nations with vassals"));
+    legendEl.appendChild(opts);
+
+    const rowsEl = document.createElement("div");
+    rowsEl.className = "rows";
+    legendEl.appendChild(rowsEl);
+    fillVassalRows(rowsEl);
+
+    input.addEventListener("input", () => {
+      filterText = input.value;
+      fillVassalRows(rowsEl);
+    });
+    box.addEventListener("change", () => {
+      vassalOnlyWith = box.checked;
+      fillVassalRows(rowsEl);
+    });
+    rowsEl.addEventListener("click", (event) => {
+      const row = event.target.closest(".row");
+      if (!row) {
+        return;
+      }
+      const key = row.dataset.value;
+      if (row.dataset.kind === "nation") {
+        const id = key.slice(7);
+        if (event.target.closest(".caret") || !vassalExpanded.has(id)) {
+          if (vassalExpanded.has(id)) {
+            vassalExpanded.delete(id);
+          } else if (vassalInfo[id].list.length) {
+            vassalExpanded.add(id);
+          }
+          fillVassalRows(rowsEl);
+          if (event.target.closest(".caret")) {
+            return;
+          }
+        }
+      }
+      selectValue(key);
+    });
+    legendEl.style.display = "flex";
   }
 
   function renderTradeLegend() {
@@ -323,7 +690,13 @@
     return fallback[names.indexOf(feature.properties.name) % fallback.length];
   }
 
+  function placeLegend() {
+    legendEl.style.top = (modesEl.offsetTop + modesEl.offsetHeight + 8) + "px";
+  }
+  window.addEventListener("resize", placeLegend);
+
   function renderLegend() {
+    placeLegend();
     legendEl.textContent = "";
     if (!currentMode) {
       legendEl.style.display = "none";
@@ -331,6 +704,10 @@
     }
     if (currentMode === "trade") {
       renderTradeLegend();
+      return;
+    }
+    if (currentMode === "vassal") {
+      renderVassalLegend();
       return;
     }
     const mode = MODES[currentMode];
@@ -345,6 +722,11 @@
     }
     title.textContent = heading;
     legendEl.appendChild(title);
+
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = (HINTS[currentMode] || "") + " Hover a province for details; click a row below to zoom to it.";
+    legendEl.appendChild(hint);
 
     const input = document.createElement("input");
     input.type = "search";
@@ -381,7 +763,7 @@
     }
     let bounds = null;
     provinceLayer.eachLayer((layer) => {
-      if (keyOf(layer.feature, currentMode) === selected) {
+      if (isPicked(layer.feature)) {
         bounds = bounds ? bounds.extend(layer.getBounds()) : L.latLngBounds(layer.getBounds().getSouthWest(), layer.getBounds().getNorthEast());
         layer.bringToFront();
       }
@@ -401,6 +783,15 @@
     modesEl.querySelectorAll("button").forEach((button) => {
       button.classList.toggle("active", button.dataset.mode === mode);
     });
+    // borderLayers[0] = vassal borders, [1] = nation borders
+    borderLayers.forEach((layer, index) => {
+      const show = mode === "vassal" || (index === 1 && NATION_BORDER_MODES.includes(mode));
+      if (show) {
+        layer.addTo(map);
+      } else {
+        layer.remove();
+      }
+    });
     if (tradeLayer) {
       if (mode === "trade") {
         tradeLayer.addTo(map).bringToFront();
@@ -411,39 +802,80 @@
     renderLegend();
   }
 
-  function tooltipFor(properties) {
+  function pretty(text) {
+    return String(text).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function tooltipFor(p) {
     const box = document.createElement("div");
-    const unset = properties.kind === "sea" ? "Sea" : properties.kind === "wasteland" ? "Wasteland" : "Unassigned";
-    let nation = properties.nation ? properties.nation + (properties.nation_rank ? " (" + properties.nation_rank + ")" : "") : unset;
-    const lines = [
-      properties.name + " (#" + properties.id + ")",
-      "Culture: " + (properties.culture || unset),
-      "Religion: " + (properties.religion || unset),
-      "Nation: " + nation
-    ];
-    if (properties.vassal) {
-      lines.push("Vassal realm: " + properties.vassal + (properties.vassal_rank && !properties.vassal_direct ? " (" + properties.vassal_rank + ")" : ""));
+    const head = document.createElement("div");
+    head.className = "head";
+    const name = document.createElement("b");
+    name.textContent = p.name;
+    head.appendChild(name);
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = "Province #" + p.id + (p.kind === "sea" ? " \u00b7 Sea zone" : p.kind === "wasteland" ? " \u00b7 Wasteland, no ruler" : "");
+    head.appendChild(sub);
+    box.appendChild(head);
+    if (p.kind === "sea" || p.kind === "wasteland") {
+      return box;
     }
-    if (properties.government_name) {
-      lines.push("Government: " + properties.government_name + (properties.government_certain === false ? " (estimated)" : ""));
-    }
-    if (properties.jure_chain) {
-      lines.push("De jure: " + properties.jure_chain);
-    }
-    if (properties.baronies) {
-      lines.push("Baronies: " + properties.baronies);
-    }
-    if (properties.liege_chain) {
-      lines.push("Chain: " + properties.liege_chain);
-    }
-    lines.forEach((text, index) => {
-      const line = document.createElement("div");
-      line.textContent = text;
-      if (index === 0) {
-        line.style.fontWeight = "700";
+
+    const rows = [];
+    const add = (label, value, note, modes, color) => {
+      if (value) {
+        rows.push({ label, value, note, modes: modes || [], color });
       }
-      box.appendChild(line);
+    };
+    add("Nation", p.nation, p.nation_rank ? "(" + p.nation_rank + ")" : "", ["nation"], palettes.nation[p.nation_title]);
+    if (p.vassal_direct) {
+      add("Held by", "The nation's ruler directly", "", ["vassal"]);
+    } else {
+      add("Held by", p.vassal, p.vassal_rank ? "(vassal " + p.vassal_rank + ")" : "", ["vassal"], palettes.vassal[p.vassal_title]);
+    }
+    const chain = (p.liege_chain || "").split(" > ").filter(Boolean);
+    if (chain.length > 1 && !p.vassal_direct) {
+      add("Liege chain", chain.join(" \u2192 "), "", ["vassal"]);
+    }
+    add("Government", p.government_name, p.government_certain === false ? "(estimated)" : "", ["government"], p.government_color);
+    add("Culture", p.culture && pretty(p.culture), "", ["culture"], p.culture_color);
+    add("Religion", p.religion && pretty(p.religion), "", ["religion"], p.religion_color);
+    const jure = [p.jure_empire_name, p.jure_kingdom_name, p.jure_duchy_name].filter(Boolean);
+    if (jure.length) {
+      add("De jure", jure.join(" \u203a "), "", ["empire", "kingdom", "duchy", "county"]);
+    }
+    if (p.baronies) {
+      const list = p.baronies.split("; ");
+      const shown = list.slice(0, 8).join(", ");
+      add(list.length === 1 ? "Barony" : "Baronies", shown + (list.length > 8 ? " +" + (list.length - 8) + " more" : ""), "");
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    rows.forEach((row) => {
+      const hl = row.modes.includes(currentMode) ? " hl" : "";
+      const k = document.createElement("div");
+      k.className = "k" + hl;
+      k.textContent = row.label;
+      const v = document.createElement("div");
+      v.className = "v" + hl;
+      if (row.color) {
+        const sw = document.createElement("span");
+        sw.className = "sw";
+        sw.style.background = row.color;
+        v.appendChild(sw);
+      }
+      v.appendChild(document.createTextNode(row.value));
+      if (row.note) {
+        const small = document.createElement("small");
+        small.textContent = " " + row.note;
+        v.appendChild(small);
+      }
+      grid.appendChild(k);
+      grid.appendChild(v);
     });
+    box.appendChild(grid);
     return box;
   }
 
@@ -483,10 +915,22 @@
       Object.assign(palettes[mode], officialColors[mode]);
     });
 
+    buildVassalInfo();
+
+    if (BORDERS) {
+      map.createPane("borders");
+      map.getPane("borders").style.zIndex = 450;
+      map.getPane("borders").style.pointerEvents = "none";
+      const renderer = L.canvas({ pane: "borders" });
+      const lines = (list) => ({ type: "MultiLineString", coordinates: list });
+      borderLayers.push(L.geoJSON(lines(BORDERS.vassal), { pane: "borders", renderer, interactive: false, style: { color: "#222222", weight: 1.6, opacity: 0.85 } }));
+      borderLayers.push(L.geoJSON(lines(BORDERS.nation), { pane: "borders", renderer, interactive: false, style: { color: "#000000", weight: 2, opacity: 0.95 } }));
+    }
+
     provinceLayer = L.geoJSON(data, {
       style: styleFor,
       onEachFeature: (feature, layer) => {
-        layer.bindTooltip(() => tooltipFor(feature.properties), { sticky: true });
+        layer.bindTooltip(() => tooltipFor(feature.properties), { sticky: true, className: "pm-tip", opacity: 1 });
         layer.on({
           mouseover: (event) => {
             event.target.setStyle(hoverStyleFor(feature));
@@ -503,8 +947,8 @@
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.mode = "trade";
-      button.textContent = "Trade Routes Mode";
-      modesEl.appendChild(button);
+      button.textContent = "Trade Routes";
+      document.getElementById("grp-other").appendChild(button);
       tradeLayer = L.geoJSON(TRADE, {
         style: (feature) => ({ color: tradeColor(feature), weight: 3, opacity: 0.95 }),
         onEachFeature: (feature, layer) => {
