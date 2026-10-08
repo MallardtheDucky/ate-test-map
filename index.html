@@ -341,6 +341,20 @@
   const BORDERS = window.BORDERS_DATA || null;
   const borderLayers = [];
   const vassalInfo = {};
+  // nation key of the selected legend row in Vassal Mode (a nation row or one of its vassals)
+  function selectedNationKey() {
+    if (currentMode !== "vassal" || selected === null) {
+      return null;
+    }
+    if (selected.startsWith("nation:")) {
+      return selected.slice(7);
+    }
+    if (vassalInfo[selected]) {
+      return selected;
+    }
+    const hit = Object.values(vassalInfo).find((n) => n.vassals[selected]);
+    return hit ? hit.key : null;
+  }
   const NO_VASSALS_COLOR = "#d4d0c2";
   const vassalExpanded = new Set();
   let vassalOnlyWith = true;
@@ -462,18 +476,31 @@
     const fill = colorFor(feature);
     const picked = isPicked(feature);
     if (currentMode === "vassal" && BORDERS) {
-      // the border lines carry the outlines; province edges stay faint
-      const dimmed = selected !== null && !picked;
-      // sea, wasteland and nations without vassals stay pale so the vassal realms stand out
-      const info = vassalInfo[feature.properties.nation_title];
-      const quiet = feature.properties.kind !== "land" || !info || !info.list.length;
+      // Default: one flat color per nation. Pick a nation (or one of its vassals) in the
+      // legend and only that nation shows its vassal realms in shades; the rest fades back.
+      const p = feature.properties;
+      const focusNation = selectedNationKey();
+      const focus = focusNation !== null && p.nation_title === focusNation;
+      const info = vassalInfo[p.nation_title];
+      let color = fill;
+      if (p.kind === "land" && p.nation_title && !focus) {
+        color = palettes.nation[p.nation_title] || fill;
+      }
+      let opacity = 0.9;
+      if (p.kind !== "land") {
+        opacity = 0.45;
+      } else if (focusNation !== null) {
+        opacity = focus ? (picked || selected.startsWith("nation:") ? 1 : 0.55) : 0.2;
+      } else if (!info || !info.list.length) {
+        opacity = 0.55;
+      }
       return {
         color: "#000000",
         weight: 0.4,
         opacity: 0.2,
         fill: true,
-        fillColor: fill || "#000000",
-        fillOpacity: !fill ? 0 : dimmed ? 0.25 : quiet ? 0.5 : 0.95
+        fillColor: color || "#000000",
+        fillOpacity: color ? opacity : 0
       };
     }
     return {
@@ -662,7 +689,7 @@
 
     const hint = document.createElement("div");
     hint.className = "hint";
-    hint.textContent = "Each nation has its own color, its vassals are shades of it. Thick black lines are nation borders, thin lines vassal borders. Pale colors = nations without vassals.";
+    hint.textContent = "Each nation has one color; paler = no vassals. Click a nation below to see its vassal realms in shades of its color. Thick black lines are nation borders, thin lines vassal borders.";
     legendEl.appendChild(hint);
 
     const input = document.createElement("input");
