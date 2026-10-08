@@ -931,9 +931,19 @@
     if (chain.length > 1 && !p.vassal_direct) {
       add("Liege chain", chain.join(" \u2192 "), "", ["vassal"]);
     }
-    add("Government", p.government_name, p.government_certain === false ? "(estimated)" : "", ["government"], p.government_color);
-    add("Culture", p.culture && pretty(p.culture), "", ["culture"], p.culture_color);
-    add("Religion", p.religion && pretty(p.religion), "", ["religion"], p.religion_color);
+    // Government belongs to a ruler, not to a province: show the direct realm's ruler and the nation's
+    const sameGov = !p.holder_government_name || p.holder_government_name === p.government_name;
+    add(p.vassal_direct || sameGov ? "Government" : "Government (holder)", p.holder_government_name || p.government_name,
+      (p.holder_government_certain === false || (!p.holder_government_name && p.government_certain === false)) ? "(estimated)" : "",
+      p.vassal_direct || sameGov ? ["government"] : [], p.holder_government_color || p.government_color);
+    if (!p.vassal_direct && !sameGov) {
+      add("Government (nation)", p.government_name, p.government_certain === false ? "(estimated)" : "", ["government"], p.government_color);
+    }
+    add("Province culture", p.culture && pretty(p.culture), "", ["culture"], p.culture_color);
+    add("Province religion", p.religion && pretty(p.religion), "", ["religion"], p.religion_color);
+    if (p.ruler_religion && p.ruler_religion !== p.religion) {
+      add("Ruler's religion", pretty(p.ruler_religion), p.ruler_culture ? "(" + pretty(p.ruler_culture) + ")" : "", []);
+    }
     const jure = [p.jure_empire_name, p.jure_kingdom_name, p.jure_duchy_name].filter(Boolean);
     if (jure.length) {
       add("De jure", jure.join(" \u203a "), "", ["empire", "kingdom", "duchy", "county"]);
